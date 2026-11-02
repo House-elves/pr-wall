@@ -3,6 +3,11 @@
 What changed for you in each version of PR wall, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.1.2
+
+- New: without a TypeSafe API key, Refresh the wall lists the open PRs instead of failing, and the tab has an Add the
+  API key button. The first refresh after setup no longer shows an error.
+
 ## 0.1.1
 
 - Fixed: a PR whose diff is too large to read, or comes back empty, is shown as too large or failed, instead of being

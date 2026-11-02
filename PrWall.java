@@ -46,7 +46,7 @@ import java.util.regex.Pattern;
  * asked once per head commit (and again only when the questions change). It reads GitHub and never writes to it: no
  * comments, labels or merges. Without --save it shows what it would send, and sends nothing (the desk's dry run).
  */
-@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.1.1", description = "Classifies a repo's open PRs with jev for Elf Desk")
+@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.1.2", description = "Classifies a repo's open PRs with jev for Elf Desk")
 public class PrWall implements Callable<Integer> {
 
     static final ObjectMapper JSON = new ObjectMapper();
@@ -83,7 +83,6 @@ public class PrWall implements Callable<Integer> {
         if (action != null) return action();
         try {
             config = Config.load();
-            if (save && config.apiKey.isBlank()) throw new IllegalStateException("Set the TypeSafe API key in PR wall's settings on the desk");
             if (printSubmission && only == null) throw new IllegalStateException("--print-submission needs --pr");
             loadQuestions();
             token = ghToken(config.githubUser);
@@ -104,7 +103,10 @@ public class PrWall implements Callable<Integer> {
         if (only != null) prs = prs.stream().filter(p -> p.path("number").asInt() == only).toList();
         System.out.println("Found " + prs.size() + " open PRs");
 
-        Jev jev = save ? new Jev(config.apiKey, config.model) : null;
+        // Without a key the wall still lists the open PRs, so a new install shows something and its first run works.
+        boolean needsKey = save && config.apiKey.isBlank();
+        if (needsKey) System.out.println("No TypeSafe API key yet: listing the PRs without asking jev");
+        Jev jev = save && !needsKey ? new Jev(config.apiKey, config.model) : null;
         ArrayNode wall = JSON.createArrayNode();
         int asked = 0, reused = 0, tooLarge = 0, failed = 0, waiting = 0, wouldAsk = 0;
         long tokens = 0;
@@ -118,6 +120,10 @@ public class PrWall implements Callable<Integer> {
             if (current && only == null) {
                 row.set("result", cached);
                 reused++;
+            } else if (needsKey) {
+                ObjectNode r = cached != null ? cached.deepCopy() : JSON.createObjectNode();
+                r.put("status", "needs-key").put("stale", cached != null);
+                row.set("result", r);
             } else if (config.skipDrafts && pr.path("isDraft").asBoolean() && only == null) {
                 row.putObject("result").put("status", "draft");
             } else if (asked + tooLarge + failed + wouldAsk >= config.maxNew && only == null) {
@@ -143,13 +149,13 @@ public class PrWall implements Callable<Integer> {
             }
             wall.add(row);
         }
-        String stats = (save ? asked + " asked, " : wouldAsk + " to ask, ") + reused + " unchanged, " + tooLarge + " too large, " + failed + " failed, " + waiting + " waiting for the next run";
+        String stats = needsKey ? prs.size() + " waiting for your TypeSafe API key" : (save ? asked + " asked, " : wouldAsk + " to ask, ") + reused + " unchanged, " + tooLarge + " too large, " + failed + " failed, " + waiting + " waiting for the next run";
         System.out.println(stats + (tokens > 0 ? String.format(Locale.ROOT, ", %,d tokens ($%.4f)", tokens, tokens * DOLLARS_PER_TOKEN) : ""));
         if (!save) return 0;
 
         String id = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
         ObjectNode run = JSON.createObjectNode().put("id", id).put("generatedAt", Instant.now().toString())
-                .put("repo", config.repo).put("model", config.model).put("asked", askedHash).put("stats", stats).put("tokens", tokens);
+                .put("repo", config.repo).put("model", config.model).put("asked", askedHash).put("stats", stats).put("tokens", tokens).put("needsKey", needsKey);
         run.set("checks", questionsFile.path("checks"));
         run.set("prs", wall);
         write(RUNS.resolve(id + ".json"), run);

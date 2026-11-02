@@ -1,7 +1,7 @@
 # A House Elves elf: what Elf Desk needs to install, set up and run pr-wall. AGENTS.md says what each field means.
 name: pr-wall
 title: PR wall
-version: 0.1.1
+version: 0.1.2
 author: "@phillip-kruger"
 description: Classifies a repo's open PRs with TypeSafe's jev, starting with whether their tests reach and check the change, and shows them as a wall you can sort and filter.
 main: PrWall.java
@@ -30,7 +30,7 @@ settings:
     default: ${github-user}
   - key: TYPESAFE_API_KEY
     label: TypeSafe API key
-    help: From the TypeSafe console (typesafe.ai). Each PR costs a fraction of a cent. Without it, Show what it would send still works.
+    help: From the TypeSafe console (typesafe.ai). Each PR costs a fraction of a cent. Without it, the wall lists the open PRs without asking jev.
     kind: secret
     optional: true
   - key: LABELS

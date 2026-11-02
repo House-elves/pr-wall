@@ -86,6 +86,9 @@ class PrWallTab extends LitElement {
         .judge { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
         .judge .said { color: var(--muted); }
         .empty { color: var(--muted); padding: 18px; margin: 0; }
+        .key { padding: 16px 20px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+        .key p { margin: 0; max-width: 46rem; }
+        .key strong { display: block; }
         .skeleton.big { height: 40vh; }
     `];
 
@@ -198,7 +201,7 @@ class PrWallTab extends LitElement {
                 ${r.summary ? html`<p class="summary">${r.summary}</p>` : ''}
             </div>
             <div class="answers">
-                ${r.status !== 'classified' ? html`<span class="status ${r.status === 'failed' ? 'bad-text' : ''}">
+                ${r.status !== 'classified' && r.status !== 'needs-key' ? html`<span class="status ${r.status === 'failed' ? 'bad-text' : ''}">
                     ${STATUS[r.status] ?? r.status}${r.stale ? ' (below: an older commit)' : ''}${r.why ? `: ${r.why}` : ''}</span>` : ''}
                 ${answered ? this._questions().map(q => html`<div class="answer"><span class="what">${q.label}</span>${this._bar(q, r.answers[q.id])}</div>`) : ''}
             </div>
@@ -222,7 +225,7 @@ class PrWallTab extends LitElement {
             <div class="page">
                 <div class="page-top"><div>
                     <h1>PR wall</h1>
-                    <p class="sub">${r ? `${count(all.length, 'open PR')} in ${r.repo}, refreshed ${runTime(r.at).toLowerCase()}. ${r.stats}.`
+                    <p class="sub">${r ? `${count(all.length, 'open PR')} in ${r.repo}, refreshed ${runTime(r.at).toLowerCase()}.${r.needsKey ? '' : ` ${r.stats}.`}`
                         : this._loading ? '' : 'Nothing read yet.'}</p>
                 </div>${settingsButton(null, 'PR wall settings')}</div>
                 <elf-run-bar command="refresh" label="Refresh the wall" .runs=${(this._runs ?? []).map(x => ({ id: x.id, label: runTime(x.at) }))}
@@ -230,6 +233,11 @@ class PrWallTab extends LitElement {
                     @run-picked=${e => { this._picked = e.detail; this._load(); }}
                     @run-finished=${() => { this._picked = null; this._load(); }}></elf-run-bar>
                 ${this._error ? html`<p class="error" role="alert">${this._error}</p>` : ''}
+                ${r?.needsKey ? html`<div class="panel key">
+                    <p><strong>Add your TypeSafe API key to see what jev says about these PRs.</strong>
+                        Until then the wall lists them without answers. The next refresh after you add it asks jev.</p>
+                    <button @click=${() => elf.settings(['TYPESAFE_API_KEY'], 'TypeSafe API key')}>Add the API key</button>
+                </div>` : ''}
                 ${this._loading && !r ? html`<div class="skeleton big"></div>` : ''}
                 ${all.length ? html`<div class="tools">
                     <input type="search" placeholder="Filter by title, author, label or number" aria-label="Filter"
@@ -244,7 +252,7 @@ class PrWallTab extends LitElement {
                 </div>` : ''}
                 ${r ? (shown.length ? html`<ul>${shown.map(p => this._pr(p))}</ul>`
                         : html`<p class="panel empty">${all.length ? 'No PR matches the filter.' : 'The repo has no open PRs.'}</p>`)
-                    : !this._loading ? html`<p class="panel empty">Set the TypeSafe API key in Settings, then Refresh the wall.</p>` : ''}
+                    : !this._loading ? html`<p class="panel empty">Refresh the wall to list the open PRs.</p>` : ''}
             </div>
         `;
     }
@@ -288,7 +296,8 @@ class PrWallCard extends LitElement {
         if (!this._loaded) return html`<div class="skeleton say-sk"></div>`;
         const prs = this._run?.prs ?? [];
         const asked = prs.filter(p => p.result?.answers).length;
-        const say = this._run ? html`<a href="#">${count(prs.length, 'open PR')}</a> in ${this._run.repo}, ${asked} classified.`
+        const say = this._run?.needsKey ? html`<a href="#">${count(prs.length, 'open PR')}</a> in ${this._run.repo}. Add your TypeSafe API key to classify them.`
+            : this._run ? html`<a href="#">${count(prs.length, 'open PR')}</a> in ${this._run.repo}, ${asked} classified.`
             : html`Nothing read yet. <a href="#">Refresh the wall</a>.`;
         const running = this._state?.running?.refresh;
         return html`<p class="say">${say}</p>

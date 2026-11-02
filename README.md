@@ -39,7 +39,7 @@ Each PR costs a fraction of a cent: jev is $42 per billion input tokens, so a 60
 
 ## Adding it
 
-Click **+** on the desk and pick PR wall. The TypeSafe API key is optional at setup: without it, **Show what it would send** works, and **Refresh the wall** asks you to set it in its settings.
+Click **+** on the desk and pick PR wall. The TypeSafe API key is optional at setup: without it, **Show what it would send** works, and **Refresh the wall** lists the open PRs without jev's answers, with a button to add the key.
 
 ## Running it by hand
 
