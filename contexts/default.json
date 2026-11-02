@@ -1,7 +1,34 @@
 {
-  "about": "What jev is told about a repo that has no context of its own in contexts/<owner>/<name>.json. Add one for a better answer.",
+  "about": "What jev is told about a repo that has no context of its own in contexts/<owner>/<name>.json. Add one for a better answer. areas are the options of the Area question.",
   "text": "Project context. The repository is a software project on GitHub. Tests are files under a src/test/ or test/ or tests/ directory, or files named like *_test.*, *.test.*, *.spec.* or test_*.*. Documentation is Markdown, AsciiDoc or files under docs/.",
-  "testPaths": ["(^|/)(src/test|tests?|__tests__)/", "(^|/)[^/]*_test\\.[^/]+$", "(^|/)[^/]*\\.(test|spec)\\.[^/]+$", "(^|/)test_[^/]+$"],
-  "noisePaths": ["(^|/)package-lock\\.json$", "(^|/)yarn\\.lock$", "(^|/)pnpm-lock\\.yaml$", "(^|/)Cargo\\.lock$", "(^|/)go\\.sum$", "(^|/)poetry\\.lock$", "\\.min\\.(js|css)$", "(^|/)generated(-sources)?/", "(^|/)vendor/"],
-  "spareFirst": ["^docs/", "\\.(md|adoc)$"]
+  "testPaths": [
+    "(^|/)(src/test|tests?|__tests__)/",
+    "(^|/)[^/]*_test\\.[^/]+$",
+    "(^|/)[^/]*\\.(test|spec)\\.[^/]+$",
+    "(^|/)test_[^/]+$"
+  ],
+  "noisePaths": [
+    "(^|/)package-lock\\.json$",
+    "(^|/)yarn\\.lock$",
+    "(^|/)pnpm-lock\\.yaml$",
+    "(^|/)Cargo\\.lock$",
+    "(^|/)go\\.sum$",
+    "(^|/)poetry\\.lock$",
+    "\\.min\\.(js|css)$",
+    "(^|/)generated(-sources)?/",
+    "(^|/)vendor/"
+  ],
+  "spareFirst": [
+    "^docs/",
+    "\\.(md|adoc)$"
+  ],
+  "areas": {
+    "core": "The main code that ships: the library, the service or the application itself.",
+    "api": "A public API, a configuration format, or a contract other code relies on.",
+    "tests": "Tests and test infrastructure only.",
+    "build-ci": "The build, CI workflows, release scripts, tooling.",
+    "dependencies": "Dependency versions and lock files.",
+    "docs": "Documentation.",
+    "other": "None of these, or several at once with none the main one."
+  }
 }

@@ -1,7 +1,27 @@
 {
-  "about": "What jev is told about quarkusio/quarkus before each diff: its layout, never an answer. Adapted from brunobat's quarkus-pr-wall (Apache-2.0); see NOTICE.",
+  "about": "What jev is told about quarkusio/quarkus before each diff: its layout, never an answer. Adapted from brunobat's quarkus-pr-wall (Apache-2.0); see NOTICE. areas are the options of the Area question.",
   "text": "Project context. The repository is Quarkus (quarkusio/quarkus): a Java framework for cloud-native applications, built with Maven. Layout conventions:\n- extensions/<name>/runtime/src/main: code shipped in users' applications and run there.\n- extensions/<name>/deployment/src/main: build-time code (@BuildStep) that runs while users' applications are built; it is shipped and shapes the built application.\n- core/ and independent-projects/: framework core, shipped.\n- bom/application/pom.xml and other pom.xml dependency versions: the libraries shipped to users; a version upgrade can change runtime behaviour.\n- Tests are classes and resources under src/test/ (JUnit 5, @QuarkusTest, QuarkusUnitTest in extension deployment modules, @QuarkusIntegrationTest).\n- integration-tests/<name>/: modules that exist only for testing and are never shipped. Only their src/test/ holds tests; their src/main/ is the application the tests exercise, and their pom.xml only builds that module.\n- test-framework/: infrastructure used by tests; it is neither a test nor shipped runtime code.\n- docs/src/main/asciidoc: documentation.\nA PR adds or modifies tests only if it changes files under a src/test/ directory.",
-  "testPaths": ["(^|/)src/test/"],
-  "noisePaths": ["(^|/)package-lock\\.json$", "(^|/)yarn\\.lock$", "(^|/)pnpm-lock\\.yaml$", "\\.min\\.(js|css)$", "(^|/)generated(-sources)?/"],
-  "spareFirst": ["^docs/"]
+  "testPaths": [
+    "(^|/)src/test/"
+  ],
+  "noisePaths": [
+    "(^|/)package-lock\\.json$",
+    "(^|/)yarn\\.lock$",
+    "(^|/)pnpm-lock\\.yaml$",
+    "\\.min\\.(js|css)$",
+    "(^|/)generated(-sources)?/"
+  ],
+  "spareFirst": [
+    "^docs/"
+  ],
+  "areas": {
+    "core-runtime": "The framework core: core/runtime, core/deployment, and the shared parts of independent-projects/ (ArC, Qute, RESTEasy Reactive and the like).",
+    "extension": "One extension's runtime or deployment module under extensions/.",
+    "spi": "An SPI or a contract between extensions: *-spi modules, build items other extensions consume.",
+    "build-ci": "Maven or Gradle plugins, the build itself, CI workflows, release scripts.",
+    "devtools": "Dev mode, Dev UI, the CLI, codestarts and other devtools/.",
+    "integration-tests": "integration-tests/ or test-framework/: modules that exist only for testing.",
+    "docs": "Documentation under docs/.",
+    "other": "None of these, or several at once with none the main one."
+  }
 }

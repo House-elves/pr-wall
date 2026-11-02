@@ -1,9 +1,9 @@
 {
-  "about": "What jev is asked about each PR. Changing anything here classifies every PR again on the next run. The wording is adapted from brunobat's quarkus-pr-wall (Apache-2.0); see NOTICE. A yes/no question's yesTone says how its bar reads on the wall (good, bad or quiet); it isn't sent to jev.",
+  "about": "What jev is asked about each PR. Changing anything here classifies every PR again on the next run. The wording is adapted from brunobat's quarkus-pr-wall (Apache-2.0); see NOTICE. A yes/no question's yesTone says how its bar reads on the wall (good, bad or quiet); it isn't sent to jev. A question with optionsFrom takes its options from the repo's context file. filter puts a choice on the wall as a filter.",
   "checks": [
     {
-      "id": "change-kind",
-      "label": "Change kind",
+      "id": "change",
+      "label": "The change",
       "questions": [
         {
           "id": "kind",
@@ -20,6 +20,42 @@
             "dependency-upgrade": "It mainly bumps dependency or BOM versions.",
             "revert": "It reverts an earlier change.",
             "other": "None of the above fits."
+          },
+          "filter": true
+        },
+        {
+          "id": "area",
+          "label": "Area",
+          "type": "choice",
+          "filter": true,
+          "optionsFrom": "areas",
+          "text": "Which part of the repository does this PR mainly change, judged from the changed file paths and hunks?"
+        },
+        {
+          "id": "size",
+          "label": "Size",
+          "type": "choice",
+          "ordered": true,
+          "text": "How large is this change in substance, regardless of how many lines it touches?",
+          "options": {
+            "trivial": "Trivial or mechanical: a typo, a rename, a version bump, generated or repeated edits.",
+            "small": "Small and local: one idea in one place.",
+            "moderate": "Moderate: several pieces that interact.",
+            "large": "Large or intricate: a new flow, or many interacting changes to follow."
+          }
+        },
+        {
+          "id": "blast",
+          "label": "Blast radius",
+          "type": "choice",
+          "ordered": true,
+          "text": "If this change is wrong, how far can it affect the code and the users that depend on it?",
+          "options": {
+            "isolated": "Isolated: a test, a sample, docs, or code nothing else calls.",
+            "module": "Within one module: callers inside it, nothing outside.",
+            "component": "One component or extension and the applications that use it.",
+            "cross-cutting": "Many components: an SPI, a shared library, or code most components call.",
+            "foundational": "Everything: the core, the build, security, or the dependency versions every user gets."
           }
         }
       ]

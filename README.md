@@ -10,6 +10,9 @@ jev is a decision model: it answers typed questions with probabilities instead o
 | Question | Answer |
 |---|---|
 | What does the diff mainly do? | bugfix, feature, refactor, docs, test-only, build/CI, dependency upgrade, revert, other |
+| Which part of the repo does it mainly change? | the repo's own areas, from its context: for Quarkus core-runtime, extension, SPI, build/CI, devtools, integration tests, docs, other |
+| How large is the change in substance? | trivial, small, moderate, large |
+| If it's wrong, how far can it reach? | isolated, module, component, cross-cutting, foundational |
 | Does the PR change runtime behaviour? | P(yes) |
 | How much of the changed code do its changed tests run? | all, some, none, no runtime change, no test changes, undetermined |
 | Do those tests assert the outcome? | all, some, none, no runtime change, no test changes, no changed code reached, undetermined |
@@ -18,16 +21,33 @@ jev is a decision model: it answers typed questions with probabilities instead o
 Whether the PR changes tests at all, and how many test files it deletes, isn't asked: it's read from the file paths and given to jev as a fact. The kind is judged from the code only, since the title and body aren't sent.
 
 The answers are shown as jev gave them. They are never combined into a score, and nothing on the wall says a PR is
-good or bad. You can sort by one answer, filter by kind, label or text, and open every option's probability. **Right** and
+good or bad. Kind, area, size and blast radius show as chips under the title, the rest as bars. You can sort by one answer, filter by kind, area, label or text, and open every option's probability. **Right** and
 **Wrong** on each answer save your verdict with the answer it judged, so jev's answers can be measured before
 anything is built on them. After **Wrong**, **What's right?** records the right answer. Once you've judged some,
 **How right jev has been** shows, for each question, how often jev was right, split by how sure it was (does 0.9
 mean right nine times in ten?), and what it said when it was wrong.
 
-- **Reads:** the open PRs of the repo you set, and their diffs, through `gh`.
+## Who opened it
+
+Next to the author, the wall says who opened the PR, from GitHub's own data and nothing else:
+
+- **bot:** a bot account on **Known automation** (Dependabot and Renovate by default).
+- **bot, not on your automation list:** any other bot account. Bruno calls this an agent.
+- **declared AI assistance:** the description or a commit says so, with an `Assisted-by:` or `Generated-by:` trailer, a
+  `Co-authored-by:` naming an AI tool, "Generated with …", or a sentence like "I used Claude Code to …". **Every
+  answer** quotes what it found.
+- Nothing, for a person's PR that declares nothing. That isn't a claim that no AI was used: nothing inspects the code
+  or the writing style.
+
+The author's association with the repo (member, contributor, first-time contributor) is shown too, and a bot's PR
+that carries a person's commits says whose. None of this is sent to jev, and no sort, filter, score or summary reads
+it: declaring AI assistance must never count against a PR.
+
+- **Reads:** the open PRs of the repo you set, their diffs, commits and descriptions, through `gh`.
 - **Writes:** each PR's diff, with its list of files and the repo's context, to jev at `api.typesafe.ai`, once per new
   commit on the PR. Nothing to GitHub: it never comments, labels or merges. What it found is saved in
-  `~/.config/pr-wall/runs/`, jev's answers per PR in `cache/`, and your verdicts in `feedback/`.
+  `~/.config/pr-wall/runs/`, jev's answers per PR in `cache/`, what GitHub said about each PR's head commit in
+  `provenance/`, and your verdicts in `feedback/`.
 
 ## What jev is sent
 
@@ -37,7 +57,8 @@ title and body aren't sent. Lock files, generated files and binaries are listed 
 rest is still over **Largest diff sent**, docs lose their content too. A PR that's still too large shows as too large
 and isn't cut part way.
 
-The questions are in `questions.json`. Changing them, the repo's context or the jev model asks about every PR again.
+The questions are in `questions.json`. The Area question's options are the repo's own, from `areas` in its context
+file. Changing the questions, the repo's context or the jev model asks about every PR again.
 
 Each PR costs a fraction of a cent: jev is $42 per billion input tokens, so a 60,000-character diff is about $0.0006.
 

@@ -35,6 +35,20 @@ const p2 = p => (p ?? 0).toFixed(2);
 const prob = (r, q, ...options) => options.reduce((s, o) => s + (r?.answers?.[q]?.probabilities?.[o] ?? 0), 0);
 
 // Each sort reads one of jev's answers on its own: answers are never combined into a score.
+/** A choice whose options are neither good nor bad for a reviewer (kind, area, size): shown as a chip, not a bar. */
+const plain = q => q.type === 'choice' && !Object.keys(q.options ?? {}).some(o => o in TONE);
+
+// Who opened the PR, from GitHub's own data. It's shown and never judged: nothing sorts, filters or scores by it.
+const WHO = {
+    bot: 'bot',
+    agent: 'bot, not on your automation list',
+    'human+ai': 'declared AI assistance',
+};
+const ASSOCIATION = {
+    OWNER: 'owner', MEMBER: 'member', COLLABORATOR: 'collaborator', CONTRIBUTOR: 'contributor',
+    FIRST_TIME_CONTRIBUTOR: 'first-time contributor', FIRST_TIMER: 'first time on GitHub',
+};
+
 /** The answer jev picked, and how sure it was of it. A yes/no answer picks yes from 0.5. */
 function picked(q, a) {
     if (q.type === 'yes-no') {
@@ -82,8 +96,18 @@ function accuracy(votes, questions, asked) {
 
 const ofCount = (right, judged) => judged ? html`${right} of ${judged} <span class="pct">${Math.round(100 * right / judged)}%</span>` : html`<span class="pct">none yet</span>`;
 
+/** Where an ordered answer (size, blast radius) sits on its scale, from 0 to 1, weighted by jev's probabilities. */
+function rank(pr, q) {
+    const options = Object.keys(q?.options ?? {});
+    const probs = pr.result?.answers?.[q?.id]?.probabilities;
+    if (!probs || options.length < 2) return -1;
+    return options.reduce((s, o, i) => s + (probs[o] ?? 0) * i, 0) / (options.length - 1);
+}
+
 const SORTS = {
     updated: { label: 'Recently updated', key: pr => -Date.parse(pr.updatedAt || 0) },
+    size: { label: 'Largest change', key: (pr, qs) => -rank(pr, qs.find(q => q.id === 'size')) },
+    blast: { label: 'Widest blast radius', key: (pr, qs) => -rank(pr, qs.find(q => q.id === 'blast')) },
     behaviour: { label: 'Most likely to change behaviour', key: pr => -(pr.result?.answers?.behaviour?.noul ?? -1) },
     reach: { label: 'Least reached by tests', key: pr => -prob(pr.result, 'reach', 'none', 'no-test-changes') },
     assert: { label: 'Least asserted', key: pr => -prob(pr.result, 'assert', 'none', 'no-test-changes', 'no-changed-code-reached') },
@@ -94,7 +118,7 @@ class PrWallTab extends LitElement {
 
     static properties = {
         _runs: { state: true }, _picked: { state: true }, _run: { state: true }, _votes: { state: true },
-        _loading: { state: true }, _error: { state: true }, _filter: { state: true }, _label: { state: true }, _kind: { state: true },
+        _loading: { state: true }, _error: { state: true }, _filter: { state: true }, _label: { state: true }, _filters: { state: true },
         _sort: { state: true }, _open: { state: true },
     };
 
@@ -111,6 +135,11 @@ class PrWallTab extends LitElement {
         .meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; }
         .label { border: 1px solid var(--line); border-radius: 99px; padding: 0 8px; }
         .summary { margin: 8px 0 0; font-size: 14px; }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 13px; }
+        .chip { background: var(--surface-2); border-radius: 6px; padding: 1px 8px; }
+        .chip .what, .chip .p { color: var(--muted); }
+        .who { font-style: italic; }
+        .details blockquote { margin: 4px 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
         .answers { display: grid; gap: 6px; font-size: 13px; align-content: start; }
         .answer { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 8px; align-items: center; }
         .answer .what { color: var(--muted); }
@@ -120,7 +149,6 @@ class PrWallTab extends LitElement {
         .part { background: color-mix(in srgb, var(--accent) 45%, var(--surface-2)); }
         .bad { background: var(--bad); }
         .quiet { background: var(--line); }
-        .plain { background: color-mix(in srgb, var(--ink) 35%, var(--surface-2)); }
         .unknown { background: repeating-linear-gradient(45deg, var(--line) 0 3px, var(--surface-2) 3px 6px); }
         .chosen { font-size: 12px; color: var(--muted); grid-column: 2; margin-top: -3px; }
         .status { color: var(--muted); font-size: 13px; }
@@ -157,7 +185,7 @@ class PrWallTab extends LitElement {
         this._loading = true;
         this._filter = '';
         this._label = '';
-        this._kind = '';
+        this._filters = {};
         this._sort = 'updated';
         // The desk keeps it in this browser and answers later: until then, the default.
         elf.store.get('sort').then(v => { if (v in SORTS) this._sort = v; }).catch(() => {});
@@ -234,24 +262,35 @@ class PrWallTab extends LitElement {
                 <span class="chosen">${p2(p)}</span>`;
         }
         const probs = a?.probabilities ?? {};
-        // Options that are neither good nor bad for a reviewer (a kind of change): one plain bar for the one jev picked.
-        if (!Object.keys(q.options).some(o => o in TONE)) {
-            return html`<div class="bar" title=${Object.keys(q.options).map(o => `${o} ${p2(probs[o])}`).join(', ')}>
-                    <span class="plain" style="width:${(probs[a?.choice] ?? 0) * 100}%"></span></div>
-                <span class="chosen">${a?.choice} ${p2(probs[a?.choice])}</span>`;
-        }
         return html`<div class="bar" title=${Object.keys(q.options).map(o => `${o} ${p2(probs[o])}`).join(', ')}>
                 ${Object.keys(q.options).map(o => html`<span class=${TONE[o] ?? 'quiet'} style="width:${(probs[o] ?? 0) * 100}%"></span>`)}
             </div>
             <span class="chosen">${a?.choice} ${p2(probs[a?.choice])}${a?.confidence != null ? `, confidence ${p2(a.confidence)}` : ''}</span>`;
     }
 
+    _who(p) {
+        if (!p) return '';
+        const parts = [WHO[p.kind], ASSOCIATION[p.association]].filter(Boolean);
+        if (p.humanCommits?.length) parts.push(`with commits by ${p.humanCommits.join(', ')}`);
+        return parts.length ? html` <span class="who" title=${p.kind === 'human' ? 'Nothing declared: not a claim that no AI was used'
+            : (p.declared ?? []).map(d => d.quote).join('\n')}>(${parts.join(', ')})</span>` : '';
+    }
+
     _details(pr) {
         const r = pr.result;
+        const declared = pr.provenance?.declared ?? [];
         return html`<div class="details">
+            ${declared.length ? html`<section>
+                <h3>What the author declared</h3>
+                ${declared.map(d => html`<div>${d.tool}, in the ${d.where.startsWith('commit') ? html`message of ${d.where}` : d.where}:
+                    <blockquote>${d.quote}</blockquote></div>`)}
+                <p class="sub">Shown as written. It's never read by a sort, a filter or a score.</p>
+            </section>` : ''}
             ${this._questions().map(q => {
                 const a = r.answers?.[q.id];
-                const vote = this._votes?.[`${pr.number}/${q.id}`];
+                // A vote on an earlier answer (an older commit, or other questions) doesn't judge this one.
+                const v = this._votes?.[`${pr.number}/${q.id}`];
+                const vote = v && (!v.asked || (v.asked === r.asked && (!v.sha || v.sha === r.sha))) ? v : undefined;
                 const said = vote?.verdict;
                 const rows = q.type === 'yes-no' ? [['yes', q.yes, a?.noul], ['no', q.no, 1 - (a?.noul ?? 0)]]
                     : Object.entries(q.options).map(([o, d]) => [o, d, a?.probabilities?.[o]]);
@@ -288,17 +327,22 @@ class PrWallTab extends LitElement {
             <div>
                 <div class="title">${pr.url ? html`<a href=${pr.url}>#${pr.number} ${pr.title}</a>` : html`<strong>#${pr.number} ${pr.title}</strong>`}</div>
                 <div class="meta">
-                    <span>${pr.author}</span>
+                    <span>${pr.author}${this._who(pr.provenance)}</span>
                     ${pr.updatedAt ? html`<span>updated ${ago(new Date(pr.updatedAt))}</span>` : ''}
                     <span>+${pr.additions} −${pr.deletions}</span>
                     ${(pr.labels ?? []).map(l => html`<span class="label">${l}</span>`)}
                 </div>
+                ${answered ? html`<div class="chips">${this._questions().filter(plain).map(q => {
+                    const a = r.answers[q.id];
+                    return html`<span class="chip" title=${Object.keys(q.options).map(o => `${o} ${p2(a?.probabilities?.[o])}`).join(', ')}>
+                        <span class="what">${q.label}</span> ${a?.choice} <span class="p">${p2(a?.probabilities?.[a?.choice])}</span></span>`;
+                })}</div>` : ''}
                 ${r.summary ? html`<p class="summary">${r.summary}</p>` : ''}
             </div>
             <div class="answers">
                 ${r.status !== 'classified' && r.status !== 'needs-key' ? html`<span class="status ${r.status === 'failed' ? 'bad-text' : ''}">
                     ${STATUS[r.status] ?? r.status}${r.stale ? ' (below: an older commit)' : ''}${r.why ? `: ${r.why}` : ''}</span>` : ''}
-                ${answered ? this._questions().map(q => html`<div class="answer"><span class="what">${q.label}</span>${this._bar(q, r.answers[q.id])}</div>`) : ''}
+                ${answered ? this._questions().filter(q => !plain(q)).map(q => html`<div class="answer"><span class="what">${q.label}</span>${this._bar(q, r.answers[q.id])}</div>`) : ''}
             </div>
             ${answered ? html`<button class="quiet more" aria-expanded=${open}
                 @click=${() => { const s = new Set(this._open); open ? s.delete(pr.number) : s.add(pr.number); this._open = s; }}>
@@ -311,14 +355,16 @@ class PrWallTab extends LitElement {
         const r = this._run;
         const all = r?.prs ?? [];
         const labels = [...new Set(all.flatMap(p => p.labels ?? []))].sort();
-        const kinds = Object.keys(this._questions().find(q => q.id === 'kind')?.options ?? {})
-            .filter(k => all.some(p => p.result?.answers?.kind?.choice === k));
+        const qs = this._questions();
+        // A filter per question that asks for one, offering only the answers some PR got.
+        const filters = qs.filter(q => q.filter).map(q => ({ q, options: Object.keys(q.options ?? {})
+            .filter(o => all.some(p => p.result?.answers?.[q.id]?.choice === o)) })).filter(f => f.options.length);
         const f = this._filter.trim().toLowerCase();
         const shown = all
             .filter(p => !this._label || (p.labels ?? []).includes(this._label))
-            .filter(p => !this._kind || p.result?.answers?.kind?.choice === this._kind)
+            .filter(p => Object.entries(this._filters).every(([q, v]) => !v || p.result?.answers?.[q]?.choice === v))
             .filter(p => !f || `#${p.number} ${p.title} ${p.author} ${(p.labels ?? []).join(' ')}`.toLowerCase().includes(f))
-            .sort((a, b) => (SORTS[this._sort] ?? SORTS.updated).key(a) - (SORTS[this._sort] ?? SORTS.updated).key(b));
+            .sort((a, b) => (SORTS[this._sort] ?? SORTS.updated).key(a, qs) - (SORTS[this._sort] ?? SORTS.updated).key(b, qs));
         return html`
             <div class="page">
                 <div class="page-top"><div>
@@ -345,10 +391,11 @@ class PrWallTab extends LitElement {
                         <option value="">Every label</option>
                         ${labels.map(l => html`<option .selected=${l === this._label}>${l}</option>`)}
                     </select>
-                    ${kinds.length ? html`<select aria-label="Kind" @change=${e => { this._kind = e.target.value; }}>
-                        <option value="">Every kind</option>
-                        ${kinds.map(k => html`<option .selected=${k === this._kind}>${k}</option>`)}
-                    </select>` : ''}
+                    ${filters.map(({ q, options }) => html`<select aria-label=${q.label}
+                            @change=${e => { this._filters = { ...this._filters, [q.id]: e.target.value }; }}>
+                        <option value="">Every ${q.label.toLowerCase()}</option>
+                        ${options.map(o => html`<option .selected=${o === this._filters[q.id]}>${o}</option>`)}
+                    </select>`)}
                     <select aria-label="Sort" @change=${e => { this._sort = e.target.value; elf.store.set('sort', this._sort).catch(() => {}); }}>
                         ${Object.entries(SORTS).map(([k, s]) => html`<option value=${k} .selected=${k === this._sort}>${s.label}</option>`)}
                     </select>

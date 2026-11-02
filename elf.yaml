@@ -1,9 +1,9 @@
 # A House Elves elf: what Elf Desk needs to install, set up and run pr-wall. AGENTS.md says what each field means.
 name: pr-wall
 title: PR wall
-version: 0.3.0
+version: 0.4.0
 author: "@phillip-kruger"
-description: Classifies a repo's open PRs with TypeSafe's jev (what kind of change, whether their tests reach and check it, whether they weaken existing tests), and shows them as a wall you can sort and filter.
+description: Classifies a repo's open PRs with TypeSafe's jev (the kind, area, size and blast radius of the change, whether its tests reach and check it, whether it weakens existing tests), notes who opened each from GitHub's own data, and shows them as a wall you can sort and filter.
 main: PrWall.java
 config: ~/.config/pr-wall/config
 tools: [gh]
@@ -11,11 +11,12 @@ tools: [gh]
 ai: [ask]
 
 reads:
-  - The open PRs of the repo you set, and their diffs, through gh.
+  - The open PRs of the repo you set, their diffs, commits and descriptions, through gh.
   - When Sum up is on, jev's answers and each PR's title (the coding agent reads them, with no tools).
 writes:
   - Each PR's diff, with the repo's file list, to TypeSafe's jev (api.typesafe.ai), once per new commit on the PR.
   - Nothing to GitHub. It never comments, labels or merges.
+  - What GitHub says about each PR's head commit (the author's association, the commits' authors and what they declare), in provenance/.
 
 settings:
   - key: REPO
@@ -69,6 +70,11 @@ settings:
     help: Changing it asks jev about every PR again.
     kind: text
     default: jev-latest
+  - key: AUTOMATION
+    label: Known automation
+    help: Bot accounts that are expected, comma-separated. A bot not on it shows as an agent.
+    kind: words
+    default: dependabot, renovate
   - key: SUM_UP
     label: Sum up with a coding agent
     help: A line about each PR written from jev's answers, instead of the plain one.
@@ -100,7 +106,8 @@ actions:
     ask: false
     params:
       number: {kind: int}
-      question: {one-of: [kind, behaviour, reach, assert, weakens]}
+      question: {kind: text, max: 40, pattern: "[a-z][a-z0-9-]*"}
       verdict: {one-of: [right, wrong, clear]}
-      # With wrong: the answer you say is right, one of the question's options (yes or no for a yes/no question).
-      correct: {one-of: [yes, no, bugfix, feature, refactor, docs, test-only, build-ci, dependency-upgrade, revert, other, all, some, none, no-runtime-change, no-test-changes, no-changed-code-reached, undetermined], optional: true}
+      # With wrong: the answer you say is right. The elf checks both against questions.json and the repo's context
+      # (an area's options are the repo's own), so they're text here.
+      correct: {kind: text, max: 40, pattern: "[a-z][a-z0-9-]*", optional: true}

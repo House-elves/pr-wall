@@ -3,6 +3,18 @@
 What changed for you in each version of PR wall, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.4.0
+
+- New: jev is asked which area of the repo each PR changes, how large it is in substance, and how far it can reach if
+  it's wrong. Kind, area, size and blast radius show as chips under the title. Filter by area, and sort by the
+  largest change or the widest blast radius.
+- New: next to the author, who opened the PR, from GitHub's own data: a known bot, another bot, declared AI
+  assistance (quoted under Every answer), and the author's association with the repo. Nothing sorts, filters or
+  scores by it. Set the bots you expect in Known automation.
+- Fixed: a vote on an earlier answer no longer shows on a PR that jev was asked about again.
+- Every PR is asked again on the next refresh, since the questions changed. The first refresh also reads each PR's
+  commits once, so it takes a minute or two longer.
+
 ## 0.3.0
 
 - New: jev is asked what kind of change each PR is (bugfix, feature, refactor, docs, test-only, build/CI, dependency

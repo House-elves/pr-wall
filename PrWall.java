@@ -6,6 +6,7 @@
 //SOURCES Claude.java
 //SOURCES Diff.java
 //SOURCES Jev.java
+//SOURCES Provenance.java
 //FILES questions.json
 //FILES contexts/default.json=contexts/default.json
 //FILES contexts/quarkusio/quarkus.json=contexts/quarkusio/quarkus.json
@@ -46,12 +47,14 @@ import java.util.regex.Pattern;
  * asked once per head commit (and again only when the questions change). It reads GitHub and never writes to it: no
  * comments, labels or merges. Without --save it shows what it would send, and sends nothing (the desk's dry run).
  */
-@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.3.0", description = "Classifies a repo's open PRs with jev for Elf Desk")
+@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.4.0", description = "Classifies a repo's open PRs with jev for Elf Desk")
 public class PrWall implements Callable<Integer> {
 
     static final ObjectMapper JSON = new ObjectMapper();
     static final Path RUNS = Config.DIR.resolve("runs");
     static final Path CACHE = Config.DIR.resolve("cache");
+    /** What GitHub said about each PR's head commit, for its provenance. */
+    static final Path FACTS = Config.DIR.resolve("provenance");
     static final Path FEEDBACK = Config.DIR.resolve("feedback").resolve("feedback.json");
     static final int KEEP_RUNS = 30;
     /** An answer about a PR that's no longer on the wall is kept this long, in case it comes back. */
@@ -116,6 +119,7 @@ public class PrWall implements Callable<Integer> {
             int number = pr.path("number").asInt();
             String sha = pr.path("headRefOid").asText();
             ObjectNode row = row(pr);
+            if (save) provenance(pr, row);
             JsonNode cached = readCache(number);
             boolean current = cached != null && sha.equals(cached.path("sha").asText()) && askedHash.equals(cached.path("asked").asText())
                     && !cached.path("status").asText().equals("failed")
@@ -177,9 +181,22 @@ public class PrWall implements Callable<Integer> {
         byte[] c = resource("contexts/" + repo[0] + "/" + repo[1] + ".json");
         if (c == null) c = resource("contexts/default.json");
         questionsFile = JSON.readTree(q);
+        JsonNode ctx = JSON.readTree(c);
+        // A question whose options are the repo's own (its areas) takes them from the context; without them it isn't asked.
+        questionsFile.path("checks").forEach(check -> {
+            ArrayNode kept = JSON.createArrayNode();
+            for (JsonNode x : check.path("questions")) {
+                if (x.has("optionsFrom")) {
+                    JsonNode options = ctx.path(x.path("optionsFrom").asText());
+                    if (!options.isObject() || options.isEmpty()) continue;
+                    ((ObjectNode) x).set("options", options);
+                }
+                kept.add(x);
+            }
+            ((ObjectNode) check).set("questions", kept);
+        });
         questions = JSON.createArrayNode();
         questionsFile.path("checks").forEach(check -> check.path("questions").forEach(questions::add));
-        JsonNode ctx = JSON.readTree(c);
         context = new Diff.Context(ctx.path("text").asText(), patterns(ctx.path("testPaths")), patterns(ctx.path("noisePaths")),
                 patterns(ctx.path("spareFirst")));
         try {
@@ -191,11 +208,6 @@ public class PrWall implements Callable<Integer> {
         } catch (Exception e) {
             throw new IOException(e);
         }
-    }
-
-    void loadQuestionsOnly() throws IOException {
-        questions = JSON.createArrayNode();
-        JSON.readTree(resource("questions.json")).path("checks").forEach(check -> check.path("questions").forEach(questions::add));
     }
 
     static byte[] resource(String name) throws IOException {
@@ -258,13 +270,11 @@ public class PrWall implements Callable<Integer> {
     /** A plain sentence from jev's answers; with Sum up on, the coding agent writes it instead. */
     String summary(JsonNode pr, JsonNode r) {
         JsonNode a = r.path("answers");
-        String template = String.format(Locale.ROOT, "Kind: %s (%.2f). Changes runtime behaviour: %.2f. %s Tests reach the change: %s (%.2f). Tests assert it: %s (%.2f). Weakens existing tests: %.2f.",
-                a.path("kind").path("choice").asText(), a.path("kind").path("probabilities").path(a.path("kind").path("choice").asText()).asDouble(),
-                a.path("behaviour").path("noul").asDouble(),
-                r.path("testFiles").asInt() == 0 ? "No test files changed." : "Changes " + r.path("testFiles").asInt() + (r.path("testFiles").asInt() == 1 ? " test file." : " test files."),
-                a.path("reach").path("choice").asText(), a.path("reach").path("probabilities").path(a.path("reach").path("choice").asText()).asDouble(),
-                a.path("assert").path("choice").asText(), a.path("assert").path("probabilities").path(a.path("assert").path("choice").asText()).asDouble(),
-                a.path("weakens").path("noul").asDouble());
+        int tests = r.path("testFiles").asInt();
+        String template = String.format(Locale.ROOT, "Kind %s, area %s, size %s, blast radius %s. Changes runtime behaviour: %.2f. %s Tests reach the change: %s. Tests assert it: %s. Weakens existing tests: %.2f.",
+                chose(a, "kind"), chose(a, "area"), chose(a, "size"), chose(a, "blast"), a.path("behaviour").path("noul").asDouble(),
+                tests == 0 ? "No test files changed." : "Changes " + tests + (tests == 1 ? " test file." : " test files."),
+                chose(a, "reach"), chose(a, "assert"), a.path("weakens").path("noul").asDouble());
         if (!config.sumUp) return template;
         ObjectNode data = JSON.createObjectNode().put("title", pr.path("title").asText());
         data.set("questions", questions);
@@ -283,16 +293,50 @@ public class PrWall implements Callable<Integer> {
         return answer == null || answer.isBlank() || answer.length() > 600 ? template : answer.replaceAll("\\s+", " ");
     }
 
+    /** A choice answer as "option (probability)", or "?" when jev wasn't asked it. */
+    static String chose(JsonNode answers, String question) {
+        JsonNode a = answers.path(question);
+        String c = a.path("choice").asText("");
+        return c.isEmpty() ? "?" : String.format(Locale.ROOT, "%s (%.2f)", c, a.path("probabilities").path(c).asDouble());
+    }
+
     // ---- GitHub, read only ----
 
     List<JsonNode> listPrs() throws IOException {
         List<String> cmd = new ArrayList<>(List.of("pr", "list", "-R", config.repo, "--state", "open", "--limit", String.valueOf(config.maxPrs),
                 "--search", "sort:updated-desc",
-                "--json", "number,title,author,url,labels,headRefOid,isDraft,updatedAt,additions,deletions,changedFiles"));
+                "--json", "number,title,author,body,url,labels,headRefOid,isDraft,updatedAt,additions,deletions,changedFiles"));
         config.labels.forEach(l -> cmd.addAll(List.of("--label", l)));
         List<JsonNode> out = new ArrayList<>();
         JSON.readTree(gh(cmd.toArray(String[]::new))).forEach(out::add);
         return out;
+    }
+
+    /**
+     * Who opened the PR, from GitHub's own data (see Provenance). Its commits and the author's association are read once
+     * per head commit; the description comes with the list, so a declaration added later shows on the next run. Without
+     * it the row just has no provenance: it never stops the run.
+     */
+    void provenance(JsonNode pr, ObjectNode row) {
+        int number = pr.path("number").asInt();
+        String sha = pr.path("headRefOid").asText();
+        Path file = FACTS.resolve(number + ".json");
+        try {
+            JsonNode facts = Files.exists(file) ? JSON.readTree(file.toFile()) : null;
+            if (facts == null || !sha.equals(facts.path("sha").asText())) {
+                JsonNode pull = JSON.readTree(gh("api", "repos/" + config.repo + "/pulls/" + number));
+                List<JsonNode> commits = new ArrayList<>();
+                for (String line : gh("api", "--paginate", "repos/" + config.repo + "/pulls/" + number + "/commits?per_page=100",
+                        "--jq", ".[] | {sha: .sha[0:7], login: .author.login, type: .author.type, message: .commit.message}").split("\n")) {
+                    if (!line.isBlank()) commits.add(JSON.readTree(line));
+                }
+                facts = Provenance.commitFacts(sha, pull, commits);
+                write(file, facts);
+            }
+            row.set("provenance", Provenance.of(pr, facts, config.automation));
+        } catch (IOException e) {
+            System.err.println("#" + number + ": couldn't read who opened it: " + e.getMessage());
+        }
     }
 
     /** What the tab shows of a PR. Its URL is checked: the tab only links to GitHub. */
@@ -396,7 +440,8 @@ public class PrWall implements Callable<Integer> {
                         .put("asked", cached.path("asked").asText()).put("model", cached.path("model").asText()).put("at", Instant.now().toString());
                 v.set("answer", cached.path("answers").path(question));
                 if (verdict.equals("wrong") && !correct.isEmpty()) {
-                    loadQuestionsOnly();
+                    config = Config.load();
+                    loadQuestions();
                     JsonNode q = null;
                     for (JsonNode x : questions) if (x.path("id").asText().equals(question)) q = x;
                     boolean known = q != null && (q.path("type").asText().equals("yes-no") ? correct.equals("yes") || correct.equals("no")
@@ -439,23 +484,27 @@ public class PrWall implements Callable<Integer> {
     }
 
     /**
-     * Old runs, and answers about PRs that aren't on the wall. When the wall has every open PR, the rest are closed and
-     * go now; otherwise a PR off the wall may still be open, so its answer goes once it's KEEP_OFF_WALL old.
+     * Old runs, and answers and provenance facts about PRs that aren't on the wall. When the wall has every open PR, the
+     * rest are closed and go now; otherwise a PR off the wall may still be open, so its files go once they're
+     * KEEP_OFF_WALL old.
      */
     void prune(List<JsonNode> open) throws IOException {
         try (var files = Files.list(RUNS)) {
             List<Path> runs = files.filter(f -> f.toString().endsWith(".json")).sorted().toList();
             for (int i = 0; i < runs.size() - KEEP_RUNS; i++) Files.deleteIfExists(runs.get(i));
         }
-        if (only != null || !Files.isDirectory(CACHE)) return;
+        if (only != null) return;
         boolean everyOpenPr = config.labels.isEmpty() && open.size() < config.maxPrs;
         Instant old = Instant.now().minus(KEEP_OFF_WALL);
         Set<String> keep = new HashSet<>();
         open.forEach(p -> keep.add(p.path("number").asText() + ".json"));
-        try (var files = Files.list(CACHE)) {
-            for (Path f : files.toList()) {
-                if (keep.contains(f.getFileName().toString())) continue;
-                if (everyOpenPr || Files.getLastModifiedTime(f).toInstant().isBefore(old)) Files.deleteIfExists(f);
+        for (Path dir : List.of(CACHE, FACTS)) {
+            if (!Files.isDirectory(dir)) continue;
+            try (var files = Files.list(dir)) {
+                for (Path f : files.toList()) {
+                    if (keep.contains(f.getFileName().toString())) continue;
+                    if (everyOpenPr || Files.getLastModifiedTime(f).toInstant().isBefore(old)) Files.deleteIfExists(f);
+                }
             }
         }
     }

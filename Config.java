@@ -23,6 +23,8 @@ public class Config {
     String apiKey;
     String model;
     boolean sumUp;
+    /** Bot accounts that are known automation, like "dependabot": a bot not on it shows as an agent. */
+    List<String> automation;
 
     static Config load() throws IOException {
         Map<String, String> raw = new HashMap<>();
@@ -44,6 +46,8 @@ public class Config {
         c.apiKey = raw.getOrDefault("TYPESAFE_API_KEY", "");
         c.model = raw.getOrDefault("JEV_MODEL", "jev-latest");
         c.sumUp = Boolean.parseBoolean(raw.getOrDefault("SUM_UP", "false"));
+        c.automation = Arrays.stream(raw.getOrDefault("AUTOMATION", "dependabot, renovate").split(","))
+                .map(s -> Provenance.account(s.strip())).filter(s -> !s.isEmpty()).toList();
         if (!c.repo.matches("[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}")) throw new IllegalStateException("Set the repo as owner/name in PR wall's settings on the desk");
         if (c.githubUser.isBlank()) throw new IllegalStateException("Set the GitHub account in PR wall's settings on the desk");
         if (c.model.isBlank() || !c.model.matches("[A-Za-z0-9._-]{1,60}")) throw new IllegalStateException("The jev model is a name like jev-latest");
