@@ -3,6 +3,10 @@
 What changed for you in each version of PR wall, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.1.3
+
+- Fixed: the tab no longer hangs on loading. It read your saved sort order the wrong way.
+
 ## 0.1.2
 
 - New: without a TypeSafe API key, Refresh the wall lists the open PRs instead of failing, and the tab has an Add the

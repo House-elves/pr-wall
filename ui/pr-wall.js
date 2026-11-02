@@ -99,7 +99,9 @@ class PrWallTab extends LitElement {
         this._loading = true;
         this._filter = '';
         this._label = '';
-        this._sort = elf.store.get('sort') ?? 'updated';
+        this._sort = 'updated';
+        // The desk keeps it in this browser and answers later: until then, the default.
+        elf.store.get('sort').then(v => { if (v in SORTS) this._sort = v; }).catch(() => {});
         this._open = new Set();
     }
 
@@ -220,7 +222,7 @@ class PrWallTab extends LitElement {
         const shown = all
             .filter(p => !this._label || (p.labels ?? []).includes(this._label))
             .filter(p => !f || `#${p.number} ${p.title} ${p.author} ${(p.labels ?? []).join(' ')}`.toLowerCase().includes(f))
-            .sort((a, b) => SORTS[this._sort].key(a) - SORTS[this._sort].key(b));
+            .sort((a, b) => (SORTS[this._sort] ?? SORTS.updated).key(a) - (SORTS[this._sort] ?? SORTS.updated).key(b));
         return html`
             <div class="page">
                 <div class="page-top"><div>
@@ -246,7 +248,7 @@ class PrWallTab extends LitElement {
                         <option value="">Every label</option>
                         ${labels.map(l => html`<option .selected=${l === this._label}>${l}</option>`)}
                     </select>
-                    <select aria-label="Sort" @change=${e => { this._sort = e.target.value; elf.store.set('sort', this._sort); }}>
+                    <select aria-label="Sort" @change=${e => { this._sort = e.target.value; elf.store.set('sort', this._sort).catch(() => {}); }}>
                         ${Object.entries(SORTS).map(([k, s]) => html`<option value=${k} .selected=${k === this._sort}>${s.label}</option>`)}
                     </select>
                 </div>` : ''}

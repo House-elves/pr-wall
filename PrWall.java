@@ -46,7 +46,7 @@ import java.util.regex.Pattern;
  * asked once per head commit (and again only when the questions change). It reads GitHub and never writes to it: no
  * comments, labels or merges. Without --save it shows what it would send, and sends nothing (the desk's dry run).
  */
-@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.1.2", description = "Classifies a repo's open PRs with jev for Elf Desk")
+@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.1.3", description = "Classifies a repo's open PRs with jev for Elf Desk")
 public class PrWall implements Callable<Integer> {
 
     static final ObjectMapper JSON = new ObjectMapper();
