@@ -18,7 +18,9 @@ Whether the PR changes tests at all isn't asked: it's read from the file paths a
 The answers are shown as jev gave them. They are never combined into a score, and nothing on the wall says a PR is
 good or bad. You can sort by one answer, filter by label or text, and open every option's probability. **Right** and
 **Wrong** on each answer save your verdict with the answer it judged, so jev's answers can be measured before
-anything is built on them.
+anything is built on them. After **Wrong**, **What's right?** records the right answer. Once you've judged some,
+**How right jev has been** shows, for each question, how often jev was right, split by how sure it was (does 0.9
+mean right nine times in ten?), and what it said when it was wrong.
 
 - **Reads:** the open PRs of the repo you set, and their diffs, through `gh`.
 - **Writes:** each PR's diff, with its list of files and the repo's context, to jev at `api.typesafe.ai`, once per new

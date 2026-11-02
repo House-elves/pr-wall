@@ -35,6 +35,53 @@ const p2 = p => (p ?? 0).toFixed(2);
 const prob = (r, q, ...options) => options.reduce((s, o) => s + (r?.answers?.[q]?.probabilities?.[o] ?? 0), 0);
 
 // Each sort reads one of jev's answers on its own: answers are never combined into a score.
+/** The answer jev picked, and how sure it was of it. A yes/no answer picks yes from 0.5. */
+function picked(q, a) {
+    if (q.type === 'yes-no') {
+        const p = a?.noul ?? 0;
+        return { option: p >= 0.5 ? 'yes' : 'no', sure: Math.max(p, 1 - p) };
+    }
+    return { option: a?.choice, sure: a?.probabilities?.[a?.choice] ?? 0 };
+}
+
+const BANDS = [
+    { label: '0.9 or more', from: 0.9, to: 2 },
+    { label: '0.7 to 0.9', from: 0.7, to: 0.9 },
+    { label: 'under 0.7', from: 0, to: 0.7 },
+];
+
+/**
+ * How right jev has been, per question, from your votes on answers to the questions the wall asks now: in all, by how
+ * sure it was (so you can see whether 0.9 means right nine times in ten), and what it said when it was wrong.
+ */
+function accuracy(votes, questions, asked) {
+    const rows = questions.map(q => ({ q, judged: 0, right: 0, bands: BANDS.map(b => ({ ...b, judged: 0, right: 0 })), mixups: {} }));
+    let older = 0;
+    for (const [key, v] of Object.entries(votes ?? {})) {
+        const row = rows.find(r => r.q.id === key.split('/')[1]);
+        if (!v?.verdict || !row) continue;
+        if (v.asked !== asked) {
+            older++;
+            continue;
+        }
+        const { option, sure } = picked(row.q, v.answer);
+        const right = v.verdict === 'right';
+        const band = row.bands.find(b => sure >= b.from && sure < b.to);
+        row.judged++;
+        band.judged++;
+        if (right) {
+            row.right++;
+            band.right++;
+        } else if (v.correct) {
+            const k = `Said ${option}, was ${v.correct}`;
+            row.mixups[k] = (row.mixups[k] ?? 0) + 1;
+        }
+    }
+    return { rows, older, judged: rows.reduce((n, r) => n + r.judged, 0), right: rows.reduce((n, r) => n + r.right, 0) };
+}
+
+const ofCount = (right, judged) => judged ? html`${right} of ${judged} <span class="pct">${Math.round(100 * right / judged)}%</span>` : html`<span class="pct">none yet</span>`;
+
 const SORTS = {
     updated: { label: 'Recently updated', key: pr => -Date.parse(pr.updatedAt || 0) },
     behaviour: { label: 'Most likely to change behaviour', key: pr => -(pr.result?.answers?.behaviour?.noul ?? -1) },
@@ -86,6 +133,15 @@ class PrWallTab extends LitElement {
         .judge { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
         .judge .said { color: var(--muted); }
         .empty { color: var(--muted); padding: 18px; margin: 0; }
+        .accuracy { padding: 14px 20px; }
+        .accuracy summary { cursor: pointer; font-weight: 600; }
+        .accuracy table { border-collapse: collapse; margin: 12px 0 6px; font-size: 14px; }
+        .accuracy th, .accuracy td { text-align: left; padding: 4px 18px 4px 0; vertical-align: top; }
+        .accuracy th { font-weight: 500; color: var(--muted); font-size: 13px; }
+        .accuracy .pct { color: var(--muted); }
+        .accuracy .mixups { color: var(--muted); font-size: 13px; }
+        .accuracy p { margin: 6px 0 0; color: var(--muted); font-size: 13px; max-width: 46rem; }
+        .table-wrap { overflow-x: auto; }
         .key { padding: 16px 20px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
         .key p { margin: 0; max-width: 46rem; }
         .key strong { display: block; }
@@ -134,16 +190,38 @@ class PrWallTab extends LitElement {
         return (this._run?.checks ?? []).flatMap(c => c.questions ?? []);
     }
 
-    async _judge(pr, question, verdict) {
+    async _judge(pr, question, verdict, correct) {
         const key = `${pr.number}/${question}`;
         const before = this._votes;
-        this._votes = { ...before, [key]: verdict === 'clear' ? undefined : { verdict } };
+        // Shown at once; what the elf saved (with the answer it judged) is read back after.
+        this._votes = { ...before, [key]: verdict === 'clear' ? undefined
+            : { verdict, correct, asked: pr.result?.asked, answer: pr.result?.answers?.[question] } };
         try {
-            await elf.act('judge', { number: pr.number, question, verdict });
+            await elf.act('judge', { number: pr.number, question, verdict, ...(correct ? { correct } : {}) });
+            this._votes = await votes();
         } catch (e) {
             this._error = `Couldn't save that: ${e.message}`;
             this._votes = before;
         }
+    }
+
+    _accuracy() {
+        const a = accuracy(this._votes, this._questions(), this._run?.asked);
+        if (!a.judged && !a.older) return '';
+        return html`<details class="panel accuracy">
+            <summary>How right jev has been: ${a.judged ? html`${a.right} of ${a.judged} answers you judged` : 'nothing judged yet on the current questions'}</summary>
+            <div class="table-wrap"><table>
+                <tr><th>Question</th><th>Right</th>${BANDS.map(b => html`<th>When ${b.label} sure</th>`)}</tr>
+                ${a.rows.map(r => html`<tr>
+                    <td>${r.q.label}${Object.keys(r.mixups).length ? html`<div class="mixups">${Object.entries(r.mixups)
+                        .sort((x, y) => y[1] - x[1]).map(([k, n]) => html`<div>${k}: ${n}</div>`)}</div>` : ''}</td>
+                    <td>${ofCount(r.right, r.judged)}</td>
+                    ${r.bands.map(b => html`<td>${ofCount(b.right, b.judged)}</td>`)}
+                </tr>`)}
+            </table></div>
+            <p>A few votes say little: judge 20 or more answers to a question before reading much into its numbers.
+                ${a.older ? `${count(a.older, 'vote')} on answers to earlier questions or another model ${a.older === 1 ? "isn't" : "aren't"} counted.` : ''}</p>
+        </details>`;
     }
 
     _bar(q, a) {
@@ -164,21 +242,27 @@ class PrWallTab extends LitElement {
         return html`<div class="details">
             ${this._questions().map(q => {
                 const a = r.answers?.[q.id];
-                const said = this._votes?.[`${pr.number}/${q.id}`]?.verdict;
+                const vote = this._votes?.[`${pr.number}/${q.id}`];
+                const said = vote?.verdict;
                 const rows = q.type === 'yes-no' ? [['yes', q.yes, a?.noul], ['no', q.no, 1 - (a?.noul ?? 0)]]
                     : Object.entries(q.options).map(([o, d]) => [o, d, a?.probabilities?.[o]]);
-                const picked = q.type === 'yes-no' ? ((a?.noul ?? 0) >= 0.5 ? 'yes' : 'no') : a?.choice;
+                const chosen = picked(q, a).option;
                 return html`<section>
                     <h3>${q.text}</h3>
-                    <table>${rows.map(([o, d, p]) => html`<tr class=${o === picked ? 'picked' : ''}>
+                    <table>${rows.map(([o, d, p]) => html`<tr class=${o === chosen ? 'picked' : ''}>
                         <td class="p">${p2(p)}</td><td>${o}</td><td>${d}</td></tr>`)}</table>
                     <div class="judge">
-                        ${said ? html`<span class="said">You said ${said}.</span>
+                        ${said ? html`<span class="said">You said ${said}${vote.correct ? `: it's ${vote.correct}` : ''}.</span>
                                 <button class="quiet" @click=${() => this._judge(pr, q.id, 'clear')}>Take back</button>`
                             : html`<span class="said">Is jev right?</span>
                                 <button class="quiet" @click=${() => this._judge(pr, q.id, 'right')}>Right</button>
                                 <button class="quiet" @click=${() => this._judge(pr, q.id, 'wrong')}>Wrong</button>`}
                     </div>
+                    ${said === 'wrong' && !vote.correct ? html`<div class="judge">
+                        <span class="said">What's right?</span>
+                        ${(q.type === 'yes-no' ? ['yes', 'no'] : Object.keys(q.options)).filter(o => o !== chosen).map(o => html`
+                            <button class="quiet" @click=${() => this._judge(pr, q.id, 'wrong', o)}>${o}</button>`)}
+                    </div>` : ''}
                 </section>`;
             })}
             <p class="sub">${count(r.files ?? 0, 'file')}, ${count(r.testFiles ?? 0, 'test file')}, ${(r.chars ?? 0).toLocaleString()} characters sent
@@ -235,6 +319,7 @@ class PrWallTab extends LitElement {
                     @run-picked=${e => { this._picked = e.detail; this._load(); }}
                     @run-finished=${() => { this._picked = null; this._load(); }}></elf-run-bar>
                 ${this._error ? html`<p class="error" role="alert">${this._error}</p>` : ''}
+                ${this._accuracy()}
                 ${r?.needsKey ? html`<div class="panel key">
                     <p><strong>Add your TypeSafe API key to see what jev says about these PRs.</strong>
                         Until then the wall lists them without answers. The next refresh after you add it asks jev.</p>

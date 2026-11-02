@@ -3,6 +3,16 @@
 What changed for you in each version of PR wall, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.2.0
+
+- New: How right jev has been, at the top of the wall once you've judged some answers. For each question, how often
+  jev was right, split by how sure it was, and what it said when it was wrong.
+- New: after Wrong, What's right? lets you say which answer is right.
+- Fixed: the wall holds the most recently updated PRs, as its setting says, not the newest opened.
+- Fixed: raising Largest diff sent asks again about PRs that were too large for the old limit.
+- Fixed: answers about PRs that are off the wall for two weeks are removed, even when the repo has more open PRs
+  than the wall shows.
+
 ## 0.1.3
 
 - Fixed: the tab no longer hangs on loading. It read your saved sort order the wrong way.

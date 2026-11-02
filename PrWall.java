@@ -46,7 +46,7 @@ import java.util.regex.Pattern;
  * asked once per head commit (and again only when the questions change). It reads GitHub and never writes to it: no
  * comments, labels or merges. Without --save it shows what it would send, and sends nothing (the desk's dry run).
  */
-@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.1.3", description = "Classifies a repo's open PRs with jev for Elf Desk")
+@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.2.0", description = "Classifies a repo's open PRs with jev for Elf Desk")
 public class PrWall implements Callable<Integer> {
 
     static final ObjectMapper JSON = new ObjectMapper();
@@ -54,6 +54,8 @@ public class PrWall implements Callable<Integer> {
     static final Path CACHE = Config.DIR.resolve("cache");
     static final Path FEEDBACK = Config.DIR.resolve("feedback").resolve("feedback.json");
     static final int KEEP_RUNS = 30;
+    /** An answer about a PR that's no longer on the wall is kept this long, in case it comes back. */
+    static final java.time.Duration KEEP_OFF_WALL = java.time.Duration.ofDays(14);
     static final int MAX_DIFF_BYTES = 20_000_000;
     /** jev's price, for the run's cost line: $42 per billion input tokens. */
     static final double DOLLARS_PER_TOKEN = 42e-9;
@@ -67,7 +69,7 @@ public class PrWall implements Callable<Integer> {
     @Option(names = "--print-submission", description = "With --pr: print what jev would be sent, and send nothing")
     boolean printSubmission;
 
-    @Option(names = "--action", paramLabel = "NAME", description = "For its tab: judge (stdin: {number, question, verdict})")
+    @Option(names = "--action", paramLabel = "NAME", description = "For its tab: judge (stdin: {number, question, verdict, correct})")
     String action;
 
     Config config;
@@ -116,7 +118,8 @@ public class PrWall implements Callable<Integer> {
             ObjectNode row = row(pr);
             JsonNode cached = readCache(number);
             boolean current = cached != null && sha.equals(cached.path("sha").asText()) && askedHash.equals(cached.path("asked").asText())
-                    && !cached.path("status").asText().equals("failed");
+                    && !cached.path("status").asText().equals("failed")
+                    && !(cached.has("limit") && cached.path("limit").asInt() < config.maxChars);
             if (current && only == null) {
                 row.set("result", cached);
                 reused++;
@@ -190,6 +193,11 @@ public class PrWall implements Callable<Integer> {
         }
     }
 
+    void loadQuestionsOnly() throws IOException {
+        questions = JSON.createArrayNode();
+        JSON.readTree(resource("questions.json")).path("checks").forEach(check -> check.path("questions").forEach(questions::add));
+    }
+
     static byte[] resource(String name) throws IOException {
         try (InputStream in = PrWall.class.getResourceAsStream("/" + name)) {
             return in == null ? null : in.readAllBytes();
@@ -218,7 +226,8 @@ public class PrWall implements Callable<Integer> {
             if (printSubmission) System.out.println(Jev.body(config.model, s.input(), questions).toPrettyString());
             if (!s.fits()) {
                 System.out.println("#" + number + ": too large, " + s.input().length() + " characters");
-                return r.put("status", "too-large").put("why", s.input().length() + " characters, over the " + config.maxChars + " sent");
+                return r.put("status", "too-large").put("limit", config.maxChars)
+                        .put("why", s.input().length() + " characters, over the " + config.maxChars + " sent");
             }
             if (jev == null) {
                 System.out.println("#" + number + ": would send " + s.input().length() + " characters"
@@ -276,6 +285,7 @@ public class PrWall implements Callable<Integer> {
 
     List<JsonNode> listPrs() throws IOException {
         List<String> cmd = new ArrayList<>(List.of("pr", "list", "-R", config.repo, "--state", "open", "--limit", String.valueOf(config.maxPrs),
+                "--search", "sort:updated-desc",
                 "--json", "number,title,author,url,labels,headRefOid,isDraft,updatedAt,additions,deletions,changedFiles"));
         config.labels.forEach(l -> cmd.addAll(List.of("--label", l)));
         List<JsonNode> out = new ArrayList<>();
@@ -371,6 +381,7 @@ public class PrWall implements Callable<Integer> {
             int number = in.path("number").asInt();
             String question = in.path("question").asText();
             String verdict = in.path("verdict").asText();
+            String correct = in.path("correct").asText("");
             JsonNode cached = readCache(number);
             if (cached == null || !cached.path("answers").has(question)) throw new IllegalArgumentException("jev hasn't answered that about #" + number);
             ObjectNode all = Files.exists(FEEDBACK) ? (ObjectNode) JSON.readTree(FEEDBACK.toFile()) : JSON.createObjectNode();
@@ -382,6 +393,15 @@ public class PrWall implements Callable<Integer> {
                 ObjectNode v = votes.putObject(key).put("verdict", verdict).put("sha", cached.path("sha").asText())
                         .put("asked", cached.path("asked").asText()).put("model", cached.path("model").asText()).put("at", Instant.now().toString());
                 v.set("answer", cached.path("answers").path(question));
+                if (verdict.equals("wrong") && !correct.isEmpty()) {
+                    loadQuestionsOnly();
+                    JsonNode q = null;
+                    for (JsonNode x : questions) if (x.path("id").asText().equals(question)) q = x;
+                    boolean known = q != null && (q.path("type").asText().equals("yes-no") ? correct.equals("yes") || correct.equals("no")
+                            : q.path("options").has(correct));
+                    if (!known) throw new IllegalArgumentException(correct + " isn't an answer to " + question);
+                    v.put("correct", correct);
+                }
             }
             write(FEEDBACK, all);
             // The last line printed is the action's answer to the tab.
@@ -416,17 +436,25 @@ public class PrWall implements Callable<Integer> {
         Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
-    /** Old runs, and the answers about PRs that are no longer open (unless only one PR was looked at). */
+    /**
+     * Old runs, and answers about PRs that aren't on the wall. When the wall has every open PR, the rest are closed and
+     * go now; otherwise a PR off the wall may still be open, so its answer goes once it's KEEP_OFF_WALL old.
+     */
     void prune(List<JsonNode> open) throws IOException {
         try (var files = Files.list(RUNS)) {
             List<Path> runs = files.filter(f -> f.toString().endsWith(".json")).sorted().toList();
             for (int i = 0; i < runs.size() - KEEP_RUNS; i++) Files.deleteIfExists(runs.get(i));
         }
-        if (only != null || !config.labels.isEmpty() || open.size() >= config.maxPrs || !Files.isDirectory(CACHE)) return;
+        if (only != null || !Files.isDirectory(CACHE)) return;
+        boolean everyOpenPr = config.labels.isEmpty() && open.size() < config.maxPrs;
+        Instant old = Instant.now().minus(KEEP_OFF_WALL);
         Set<String> keep = new HashSet<>();
         open.forEach(p -> keep.add(p.path("number").asText() + ".json"));
         try (var files = Files.list(CACHE)) {
-            for (Path f : files.toList()) if (!keep.contains(f.getFileName().toString())) Files.deleteIfExists(f);
+            for (Path f : files.toList()) {
+                if (keep.contains(f.getFileName().toString())) continue;
+                if (everyOpenPr || Files.getLastModifiedTime(f).toInstant().isBefore(old)) Files.deleteIfExists(f);
+            }
         }
     }
 
