@@ -1,0 +1,48 @@
+{
+  "about": "What jev is asked about each PR. Changing anything here classifies every PR again on the next run. The wording is from brunobat's quarkus-pr-wall (Apache-2.0); see NOTICE.",
+  "checks": [
+    {
+      "id": "test-adequacy",
+      "label": "Test adequacy",
+      "questions": [
+        {
+          "id": "behaviour",
+          "label": "Changes behaviour",
+          "type": "yes-no",
+          "text": "Does this PR change the runtime behaviour of the software?",
+          "yes": "it changes code that runs, configuration read at runtime, or dependency versions that are shipped",
+          "no": "it only changes documentation, comments, formatting, tests, or build/CI tooling that does not affect the shipped artifact"
+        },
+        {
+          "id": "reach",
+          "label": "Tests reach the change",
+          "type": "choice",
+          "text": "How much of the changed runtime code do the tests this PR adds or modifies execute?",
+          "options": {
+            "all": "Every changed runtime code path is executed by a changed test.",
+            "some": "Some changed runtime code paths are executed by a changed test; others are not.",
+            "none": "The PR changes runtime behaviour and adds or modifies tests, but they execute none of the changed runtime code.",
+            "no-runtime-change": "The PR changes no runtime behaviour, whether or not it changes tests.",
+            "no-test-changes": "The PR changes runtime behaviour but adds or modifies no tests.",
+            "undetermined": "The diff does not give enough to tell, e.g. binary or generated changes, behaviour too indirect to trace, or tests that depend on code outside the diff."
+          }
+        },
+        {
+          "id": "assert",
+          "label": "Tests assert it",
+          "type": "choice",
+          "text": "Do the tests this PR adds or modifies assert the outcome of the changed code they execute?",
+          "options": {
+            "all": "Every changed path the changed tests execute has its outcome asserted.",
+            "some": "Some executed changed paths are asserted; others are only called, built or smoke-run.",
+            "none": "The changed tests execute changed code but assert none of its outcomes.",
+            "no-runtime-change": "The PR changes no runtime behaviour, whether or not it changes tests.",
+            "no-test-changes": "The PR changes runtime behaviour but adds or modifies no tests.",
+            "no-changed-code-reached": "The PR changes runtime behaviour and tests, but the changed tests execute none of the changed runtime code.",
+            "undetermined": "The diff does not give enough to tell."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+# A House Elves elf: what Elf Desk needs to install, set up and run pr-wall. AGENTS.md says what each field means.
+name: pr-wall
+title: PR wall
+version: 0.1.0
+author: "@phillip-kruger"
+description: Classifies a repo's open PRs with TypeSafe's jev, starting with whether their tests reach and check the change, and shows them as a wall you can sort and filter.
+main: PrWall.java
+config: ~/.config/pr-wall/config
+tools: [gh]
+# With Sum up on, it asks a coding agent (Claude.ask) for each PR's one-line summary.
+ai: [ask]
+
+reads:
+  - The open PRs of the repo you set, and their diffs, through gh.
+  - When Sum up is on, jev's answers and each PR's title (the coding agent reads them, with no tools).
+writes:
+  - Each PR's diff, with the repo's file list, to TypeSafe's jev (api.typesafe.ai), once per new commit on the PR.
+  - Nothing to GitHub. It never comments, labels or merges.
+
+settings:
+  - key: REPO
+    label: Repo
+    help: The repo whose open PRs go on the wall, as owner/name.
+    kind: text
+    default: quarkusio/quarkus
+  - key: GITHUB_USER
+    label: GitHub account
+    help: The gh login it reads GitHub as.
+    kind: login
+    default: ${github-user}
+  - key: TYPESAFE_API_KEY
+    label: TypeSafe API key
+    help: From the TypeSafe console (typesafe.ai). Each PR costs a fraction of a cent. Without it, Show what it would send still works.
+    kind: secret
+    optional: true
+  - key: LABELS
+    label: Only PRs with these labels
+    help: Comma-separated. A PR needs all of them. Empty for every open PR.
+    kind: words
+    default: ""
+  - key: SKIP_DRAFTS
+    label: Leave drafts out
+    help: Drafts are listed but not classified.
+    kind: bool
+    default: "true"
+  - key: MAX_PRS
+    label: PRs on the wall
+    help: The most recently updated this many open PRs.
+    kind: int
+    min: 1
+    max: 1000
+    default: "100"
+  - key: MAX_NEW
+    label: PRs asked per run
+    help: The most it asks jev about in one run. The rest wait for the next.
+    kind: int
+    min: 1
+    max: 500
+    default: "25"
+  - key: MAX_CHARS
+    label: Largest diff sent
+    help: In characters. Lock files, generated files and then docs are left out first; a PR still larger is shown as too large.
+    kind: int
+    min: 10000
+    max: 400000
+    default: "60000"
+  - key: JEV_MODEL
+    label: jev model
+    help: Changing it asks jev about every PR again.
+    kind: text
+    default: jev-latest
+  - key: SUM_UP
+    label: Sum up with a coding agent
+    help: A line about each PR written from jev's answers, instead of the plain one.
+    kind: bool
+    default: "false"
+
+commands:
+  refresh:
+    label: Refresh the wall
+    args: [--save]
+  dry-run:
+    label: Show what it would send
+    args: []
+
+dry-run: dry-run
+
+tab:
+  page: ui/pr-wall.js
+  card: true
+refresh:
+  command: refresh
+  schedule: "Mon..Fri *-*-* 7..18:00"
+data: [runs, feedback]
+
+actions:
+  judge:
+    label: Say if jev's answer is right
+    args: [--action=judge]
+    ask: false
+    params:
+      number: {kind: int}
+      question: {one-of: [behaviour, reach, assert]}
+      verdict: {one-of: [right, wrong, clear]}
