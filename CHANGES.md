@@ -3,6 +3,14 @@
 What changed for you in each version of PR wall, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.3.0
+
+- New: jev is asked what kind of change each PR is (bugfix, feature, refactor, docs, test-only, build/CI, dependency
+  upgrade, revert), judged from the code rather than the title. Filter the wall by it.
+- New: jev is asked whether each PR removes, disables or loosens existing tests or assertions. Sort by it.
+- Both have Right, Wrong and What's right?, and show in How right jev has been.
+- Every PR is asked again on the next refresh, since the questions changed.
+
 ## 0.2.0
 
 - New: How right jev has been, at the top of the wall once you've judged some answers. For each question, how often

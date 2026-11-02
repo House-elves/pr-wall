@@ -3,20 +3,22 @@
 # PR wall
 
 A [House Elves](https://github.com/House-elves) elf that puts a repo's open PRs on a wall, each with what TypeSafe's
-[jev](https://typesafe.ai) says about its tests. `quarkusio/quarkus` is the default.
+[jev](https://typesafe.ai) says about the change and its tests. `quarkusio/quarkus` is the default.
 
 jev is a decision model: it answers typed questions with probabilities instead of prose. For each PR it's asked:
 
 | Question | Answer |
 |---|---|
+| What does the diff mainly do? | bugfix, feature, refactor, docs, test-only, build/CI, dependency upgrade, revert, other |
 | Does the PR change runtime behaviour? | P(yes) |
 | How much of the changed code do its changed tests run? | all, some, none, no runtime change, no test changes, undetermined |
 | Do those tests assert the outcome? | all, some, none, no runtime change, no test changes, no changed code reached, undetermined |
+| Does the PR remove, disable or loosen existing tests or assertions? | P(yes) |
 
-Whether the PR changes tests at all isn't asked: it's read from the file paths and given to jev as a fact.
+Whether the PR changes tests at all, and how many test files it deletes, isn't asked: it's read from the file paths and given to jev as a fact. The kind is judged from the code only, since the title and body aren't sent.
 
 The answers are shown as jev gave them. They are never combined into a score, and nothing on the wall says a PR is
-good or bad. You can sort by one answer, filter by label or text, and open every option's probability. **Right** and
+good or bad. You can sort by one answer, filter by kind, label or text, and open every option's probability. **Right** and
 **Wrong** on each answer save your verdict with the answer it judged, so jev's answers can be measured before
 anything is built on them. After **Wrong**, **What's right?** records the right answer. Once you've judged some,
 **How right jev has been** shows, for each question, how often jev was right, split by how sure it was (does 0.9

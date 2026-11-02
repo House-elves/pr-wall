@@ -1,5 +1,5 @@
 pr-wall, a House Elves elf.
 
 The wording of the questions in questions.json and the Quarkus project context in contexts/quarkusio/quarkus.json are
-adapted from quarkus-pr-wall by brunobat (https://github.com/brunobat/quarkus-pr-wall, branch simplify-lc4j),
-licensed under the Apache License, Version 2.0. The code here is written anew.
+adapted from quarkus-pr-wall by brunobat (https://github.com/brunobat/quarkus-pr-wall, branches simplify-lc4j and
+poc-full-jev-2), licensed under the Apache License, Version 2.0. The code here is written anew.

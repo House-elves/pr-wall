@@ -1,6 +1,29 @@
 {
-  "about": "What jev is asked about each PR. Changing anything here classifies every PR again on the next run. The wording is from brunobat's quarkus-pr-wall (Apache-2.0); see NOTICE.",
+  "about": "What jev is asked about each PR. Changing anything here classifies every PR again on the next run. The wording is adapted from brunobat's quarkus-pr-wall (Apache-2.0); see NOTICE. A yes/no question's yesTone says how its bar reads on the wall (good, bad or quiet); it isn't sent to jev.",
   "checks": [
+    {
+      "id": "change-kind",
+      "label": "Change kind",
+      "questions": [
+        {
+          "id": "kind",
+          "label": "Kind of change",
+          "type": "choice",
+          "text": "What does this PR's diff mainly do? Judge from the code, not from what a title or description would claim.",
+          "options": {
+            "bugfix": "It corrects behaviour that was wrong.",
+            "feature": "It adds a new capability, API or configuration.",
+            "refactor": "It restructures code without meaning to change behaviour.",
+            "docs": "It only changes documentation.",
+            "test-only": "It only adds or changes tests or test infrastructure.",
+            "build-ci": "It changes build tooling, CI workflows or release scripts, not shipped code.",
+            "dependency-upgrade": "It mainly bumps dependency or BOM versions.",
+            "revert": "It reverts an earlier change.",
+            "other": "None of the above fits."
+          }
+        }
+      ]
+    },
     {
       "id": "test-adequacy",
       "label": "Test adequacy",
@@ -41,6 +64,21 @@
             "no-changed-code-reached": "The PR changes runtime behaviour and tests, but the changed tests execute none of the changed runtime code.",
             "undetermined": "The diff does not give enough to tell."
           }
+        }
+      ]
+    },
+    {
+      "id": "test-weakening",
+      "label": "Test weakening",
+      "questions": [
+        {
+          "id": "weakens",
+          "label": "Weakens tests",
+          "type": "yes-no",
+          "yesTone": "bad",
+          "text": "Does this PR remove, disable or loosen existing tests or assertions?",
+          "yes": "it deletes an existing test or assertion, disables or skips a test, loosens an expected value, or swaps a strict assertion for a weaker one",
+          "no": "it leaves every existing test and assertion at least as strict as it was, or touches no existing test"
         }
       ]
     }

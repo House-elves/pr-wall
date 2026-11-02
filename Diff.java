@@ -58,8 +58,10 @@ public class Diff {
      * title and body are not sent: they say what the author meant, and the questions are about what the code does.
      */
     static String input(List<File> files, Context context, int testFiles, List<String> omitted) {
+        long deleted = files.stream().filter(f -> f.kind().equals("deleted") && context.isTest(f.path())).count();
         StringBuilder s = new StringBuilder(context.text()).append("\n\nFacts, from the file paths: this PR ")
-                .append(testFiles == 0 ? "adds or modifies no tests." : "adds or modifies " + testFiles + " test file" + (testFiles == 1 ? "." : "s."))
+                .append(testFiles == 0 ? "adds or modifies no tests." : "adds or modifies " + testFiles + " test file" + (testFiles == 1 ? "" : "s")
+                        + (deleted == 0 ? ", deleting none of them." : ", deleting " + deleted + " of them."))
                 .append("\n\nChanged files:\n");
         for (File f : files) {
             s.append("- ").append(f.path()).append(" (").append(f.describe());

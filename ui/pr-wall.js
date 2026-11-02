@@ -1,4 +1,4 @@
-// pr-wall's tab on Elf Desk: the repo's open PRs, each with jev's answers about its tests, as jev gave them.
+// pr-wall's tab on Elf Desk: the repo's open PRs, each with jev's answers about the change and its tests, as jev gave them.
 // It runs in the desk's sandboxed frame: everything goes through `elf`, and only what elf.yaml declares.
 import {
     LitElement, html, css, shared, cardStyles, spinner, ago, runTime, count, settingsButton, Ticking, elf,
@@ -87,13 +87,14 @@ const SORTS = {
     behaviour: { label: 'Most likely to change behaviour', key: pr => -(pr.result?.answers?.behaviour?.noul ?? -1) },
     reach: { label: 'Least reached by tests', key: pr => -prob(pr.result, 'reach', 'none', 'no-test-changes') },
     assert: { label: 'Least asserted', key: pr => -prob(pr.result, 'assert', 'none', 'no-test-changes', 'no-changed-code-reached') },
+    weakens: { label: 'Most likely to weaken tests', key: pr => -(pr.result?.answers?.weakens?.noul ?? -1) },
 };
 
 class PrWallTab extends LitElement {
 
     static properties = {
         _runs: { state: true }, _picked: { state: true }, _run: { state: true }, _votes: { state: true },
-        _loading: { state: true }, _error: { state: true }, _filter: { state: true }, _label: { state: true },
+        _loading: { state: true }, _error: { state: true }, _filter: { state: true }, _label: { state: true }, _kind: { state: true },
         _sort: { state: true }, _open: { state: true },
     };
 
@@ -119,6 +120,7 @@ class PrWallTab extends LitElement {
         .part { background: color-mix(in srgb, var(--accent) 45%, var(--surface-2)); }
         .bad { background: var(--bad); }
         .quiet { background: var(--line); }
+        .plain { background: color-mix(in srgb, var(--ink) 35%, var(--surface-2)); }
         .unknown { background: repeating-linear-gradient(45deg, var(--line) 0 3px, var(--surface-2) 3px 6px); }
         .chosen { font-size: 12px; color: var(--muted); grid-column: 2; margin-top: -3px; }
         .status { color: var(--muted); font-size: 13px; }
@@ -155,6 +157,7 @@ class PrWallTab extends LitElement {
         this._loading = true;
         this._filter = '';
         this._label = '';
+        this._kind = '';
         this._sort = 'updated';
         // The desk keeps it in this browser and answers later: until then, the default.
         elf.store.get('sort').then(v => { if (v in SORTS) this._sort = v; }).catch(() => {});
@@ -227,10 +230,16 @@ class PrWallTab extends LitElement {
     _bar(q, a) {
         if (q.type === 'yes-no') {
             const p = a?.noul ?? 0;
-            return html`<div class="bar" title="P(yes) ${p2(p)}"><span class="good" style="width:${p * 100}%"></span></div>
+            return html`<div class="bar" title="P(yes) ${p2(p)}"><span class=${q.yesTone ?? 'good'} style="width:${p * 100}%"></span></div>
                 <span class="chosen">${p2(p)}</span>`;
         }
         const probs = a?.probabilities ?? {};
+        // Options that are neither good nor bad for a reviewer (a kind of change): one plain bar for the one jev picked.
+        if (!Object.keys(q.options).some(o => o in TONE)) {
+            return html`<div class="bar" title=${Object.keys(q.options).map(o => `${o} ${p2(probs[o])}`).join(', ')}>
+                    <span class="plain" style="width:${(probs[a?.choice] ?? 0) * 100}%"></span></div>
+                <span class="chosen">${a?.choice} ${p2(probs[a?.choice])}</span>`;
+        }
         return html`<div class="bar" title=${Object.keys(q.options).map(o => `${o} ${p2(probs[o])}`).join(', ')}>
                 ${Object.keys(q.options).map(o => html`<span class=${TONE[o] ?? 'quiet'} style="width:${(probs[o] ?? 0) * 100}%"></span>`)}
             </div>
@@ -302,9 +311,12 @@ class PrWallTab extends LitElement {
         const r = this._run;
         const all = r?.prs ?? [];
         const labels = [...new Set(all.flatMap(p => p.labels ?? []))].sort();
+        const kinds = Object.keys(this._questions().find(q => q.id === 'kind')?.options ?? {})
+            .filter(k => all.some(p => p.result?.answers?.kind?.choice === k));
         const f = this._filter.trim().toLowerCase();
         const shown = all
             .filter(p => !this._label || (p.labels ?? []).includes(this._label))
+            .filter(p => !this._kind || p.result?.answers?.kind?.choice === this._kind)
             .filter(p => !f || `#${p.number} ${p.title} ${p.author} ${(p.labels ?? []).join(' ')}`.toLowerCase().includes(f))
             .sort((a, b) => (SORTS[this._sort] ?? SORTS.updated).key(a) - (SORTS[this._sort] ?? SORTS.updated).key(b));
         return html`
@@ -333,6 +345,10 @@ class PrWallTab extends LitElement {
                         <option value="">Every label</option>
                         ${labels.map(l => html`<option .selected=${l === this._label}>${l}</option>`)}
                     </select>
+                    ${kinds.length ? html`<select aria-label="Kind" @change=${e => { this._kind = e.target.value; }}>
+                        <option value="">Every kind</option>
+                        ${kinds.map(k => html`<option .selected=${k === this._kind}>${k}</option>`)}
+                    </select>` : ''}
                     <select aria-label="Sort" @change=${e => { this._sort = e.target.value; elf.store.set('sort', this._sort).catch(() => {}); }}>
                         ${Object.entries(SORTS).map(([k, s]) => html`<option value=${k} .selected=${k === this._sort}>${s.label}</option>`)}
                     </select>

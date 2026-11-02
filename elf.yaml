@@ -1,9 +1,9 @@
 # A House Elves elf: what Elf Desk needs to install, set up and run pr-wall. AGENTS.md says what each field means.
 name: pr-wall
 title: PR wall
-version: 0.2.0
+version: 0.3.0
 author: "@phillip-kruger"
-description: Classifies a repo's open PRs with TypeSafe's jev, starting with whether their tests reach and check the change, and shows them as a wall you can sort and filter.
+description: Classifies a repo's open PRs with TypeSafe's jev (what kind of change, whether their tests reach and check it, whether they weaken existing tests), and shows them as a wall you can sort and filter.
 main: PrWall.java
 config: ~/.config/pr-wall/config
 tools: [gh]
@@ -100,7 +100,7 @@ actions:
     ask: false
     params:
       number: {kind: int}
-      question: {one-of: [behaviour, reach, assert]}
+      question: {one-of: [kind, behaviour, reach, assert, weakens]}
       verdict: {one-of: [right, wrong, clear]}
       # With wrong: the answer you say is right, one of the question's options (yes or no for a yes/no question).
-      correct: {one-of: [yes, no, all, some, none, no-runtime-change, no-test-changes, no-changed-code-reached, undetermined], optional: true}
+      correct: {one-of: [yes, no, bugfix, feature, refactor, docs, test-only, build-ci, dependency-upgrade, revert, other, all, some, none, no-runtime-change, no-test-changes, no-changed-code-reached, undetermined], optional: true}
