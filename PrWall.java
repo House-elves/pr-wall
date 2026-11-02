@@ -46,7 +46,7 @@ import java.util.regex.Pattern;
  * asked once per head commit (and again only when the questions change). It reads GitHub and never writes to it: no
  * comments, labels or merges. Without --save it shows what it would send, and sends nothing (the desk's dry run).
  */
-@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.1.0", description = "Classifies a repo's open PRs with jev for Elf Desk")
+@Command(name = "pr-wall", mixinStandardHelpOptions = true, version = "0.1.1", description = "Classifies a repo's open PRs with jev for Elf Desk")
 public class PrWall implements Callable<Integer> {
 
     static final ObjectMapper JSON = new ObjectMapper();
@@ -204,6 +204,8 @@ public class PrWall implements Callable<Integer> {
         try {
             String diff = gh("pr", "diff", String.valueOf(number), "-R", config.repo);
             List<Diff.File> files = Diff.parse(diff);
+            // An empty diff would be asked about as if the PR changed nothing.
+            if (files.isEmpty()) throw new IOException("GitHub gave an empty diff");
             Diff.Submission s = Diff.submission(files, context, config.maxChars);
             r.put("files", files.size()).put("testFiles", s.testFiles()).put("chars", s.input().length());
             r.set("omitted", JSON.valueToTree(s.omitted()));
@@ -322,7 +324,10 @@ public class PrWall implements Callable<Integer> {
                 p.destroyForcibly();
                 throw new IOException(cmd.get(0) + " took over " + seconds + "s");
             }
-            return new Exec(p.exitValue(), out.get(10, TimeUnit.SECONDS), err.get(10, TimeUnit.SECONDS));
+            String o = out.get(10, TimeUnit.SECONDS), e = err.get(10, TimeUnit.SECONDS);
+            // Output we couldn't read whole is a failure, whatever the exit code says.
+            if (o == null) throw new IOException("diff exceeded the " + MAX_DIFF_BYTES / 1_000_000 + " MB this elf reads");
+            return new Exec(p.exitValue(), o, e == null ? "" : e);
         } catch (IOException e) {
             throw e;
         } catch (Exception e) {
@@ -330,16 +335,17 @@ public class PrWall implements Callable<Integer> {
         }
     }
 
+    /** The output, or null when it's over the cap: never a partial or empty stand-in for it. */
     static String read(InputStream in) {
         try (in) {
             byte[] b = in.readNBytes(MAX_DIFF_BYTES + 1);
             if (b.length > MAX_DIFF_BYTES) {
                 in.transferTo(java.io.OutputStream.nullOutputStream());
-                return "";
+                return null;
             }
             return new String(b, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            return "";
+            return null;
         }
     }
 

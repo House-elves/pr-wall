@@ -3,6 +3,11 @@
 What changed for you in each version of PR wall, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.1.1
+
+- Fixed: a PR whose diff is too large to read, or comes back empty, is shown as too large or failed, instead of being
+  sent to jev as if it changed nothing.
+
 ## 0.1.0
 
 - Lists a repo's open PRs (quarkusio/quarkus by default) and asks TypeSafe's jev three questions about each: does it
